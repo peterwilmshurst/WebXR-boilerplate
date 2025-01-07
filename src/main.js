@@ -10,8 +10,10 @@ let controller1, controller2
 let controllerGrip1, controllerGrip2
 let raycaster
 
+const gravity = -0.001
 const intersected = []
 const selectableObjects = [] // Array to store individual meshes for interaction
+const fallingObjects = [] // Array to store objects that are falling
 
 let controls, group
 
@@ -154,6 +156,7 @@ function onSelectEnd(event) {
     object.material.emissive.b = 0 // Reset visual feedback
     group.attach(object) // Reattach the mesh to the scene
     controller.userData.selected = undefined
+    fallingObjects.push({ mesh: object, velocity: 0 })
   }
 }
 
@@ -190,6 +193,24 @@ function intersectObjects(controller) {
   }
 }
 
+function applyGravity() {
+  fallingObjects.forEach((entry) => {
+    const object = entry.mesh
+    let velocity = entry.velocity
+
+    velocity += gravity
+    object.position.y += velocity // Move object along Y axis
+
+    if (object.position.y <= 0.1) {
+      object.position.y = 0.1 // Stop object from falling through the floor
+      entry.velocity = 0
+    }
+    else {
+      entry.velocity = velocity
+    }
+  })
+}
+
 function cleanIntersected() {
   intersected.forEach((object) => {
     object.material.emissive.set(0x000000) // Reset emissive color
@@ -201,5 +222,6 @@ function animate() {
   cleanIntersected()
   intersectObjects(controller1)
   intersectObjects(controller2)
+  applyGravity()
   renderer.render(scene, camera)
 }
