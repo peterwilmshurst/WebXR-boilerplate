@@ -10,10 +10,12 @@ let controller1, controller2
 let controllerGrip1, controllerGrip2
 let raycaster
 
-const gravity = -0.001
 const intersected = []
 const selectableObjects = [] // Array to store individual meshes for interaction
-const fallingObjects = [] // Array to store objects that are falling
+const boundingBoxes = [] // Store bounding boxes for collision detection
+const fallingObjects = [] // Array to store falling letters
+
+const gravity = -0.001 // Gravity strength
 
 let controls, group
 
@@ -106,6 +108,10 @@ function init() {
         child.receiveShadow = true
         child.material = child.material.clone()
         selectableObjects.push(child)
+
+        // Create a bounding box for each letter
+        const box = new THREE.Box3().setFromObject(child)
+        boundingBoxes.push({ mesh: child, box: box })
       }
     })
   })
@@ -144,6 +150,10 @@ function onSelectStart(event) {
     object.material.emissive.b = 1 // Visual feedback for selection
     controller.attach(object) // Attach selected mesh to controller
     controller.userData.selected = object
+
+    // Remove the object from fallingObjects if it's being picked up
+    const index = fallingObjects.findIndex(entry => entry.mesh === object)
+    if (index !== -1) fallingObjects.splice(index, 1)
   }
 }
 
@@ -156,6 +166,8 @@ function onSelectEnd(event) {
     object.material.emissive.b = 0 // Reset visual feedback
     group.attach(object) // Reattach the mesh to the scene
     controller.userData.selected = undefined
+
+    // Add the object to fallingObjects to apply gravity
     fallingObjects.push({ mesh: object, velocity: 0 })
   }
 }
@@ -167,6 +179,50 @@ function getIntersections(controller) {
   // Intersect with all selectable objects (individual meshes)
   return raycaster.intersectObjects(selectableObjects, false)
 }
+
+function applyGravity() {
+  fallingObjects.forEach((entry) => {
+    const object = entry.mesh
+    let velocity = entry.velocity
+
+    // Apply gravity by decreasing velocity
+    velocity += gravity
+    object.position.y += velocity
+
+    // Update the bounding box for the object
+    updateBoundingBox(object)
+
+    // Check for collision with floor or other letters
+    if (object.position.y <= 0 || checkCollisionWithLetters(object)) {
+      object.position.y -= velocity // Undo last movement
+      entry.velocity = 0 // Stop the object
+    }
+    else {
+      entry.velocity = velocity // Update velocity
+    }
+  })
+}
+
+function checkCollisionWithLetters(object) {
+  const objectBox = new THREE.Box3().setFromObject(object)
+
+  for (const entry of boundingBoxes) {
+    if (entry.mesh !== object) {
+      if (objectBox.intersectsBox(entry.box)) {
+        return true // Collision detected
+      }
+    }
+  }
+  return false // No collision
+}
+
+function updateBoundingBox(object) {
+  const entry = boundingBoxes.find(entry => entry.mesh === object)
+  if (entry) {
+    entry.box.setFromObject(object) // Update the bounding box to the new position
+  }
+}
+
 function intersectObjects(controller) {
   if (controller.userData.targetRayMode === 'screen') return
   if (controller.userData.selected !== undefined) return
@@ -193,24 +249,6 @@ function intersectObjects(controller) {
   }
 }
 
-function applyGravity() {
-  fallingObjects.forEach((entry) => {
-    const object = entry.mesh
-    let velocity = entry.velocity
-
-    velocity += gravity
-    object.position.y += velocity // Move object along Y axis
-
-    if (object.position.y <= 0.1) {
-      object.position.y = 0.1 // Stop object from falling through the floor
-      entry.velocity = 0
-    }
-    else {
-      entry.velocity = velocity
-    }
-  })
-}
-
 function cleanIntersected() {
   intersected.forEach((object) => {
     object.material.emissive.set(0x000000) // Reset emissive color
@@ -222,6 +260,6 @@ function animate() {
   cleanIntersected()
   intersectObjects(controller1)
   intersectObjects(controller2)
-  applyGravity()
+  applyGravity() // Apply gravity to falling objects
   renderer.render(scene, camera)
 }
