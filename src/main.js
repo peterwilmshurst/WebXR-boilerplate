@@ -13,6 +13,12 @@ let raycaster
 const intersected = []
 const selectableObjects = [] // Array to store individual meshes for interaction
 
+const bullets = [] // Array to store active bullets
+const bulletSpeed = 0.1 // Speed at which bullets move
+
+// Load firing sound
+const fireSound = new Audio('laser.ogg')
+
 let controls, group
 
 init()
@@ -108,6 +114,13 @@ function init() {
     })
   })
 
+  // Load blaster model and attach to right controller (controllerGrip2)
+  loader.load('blaster.glb', (gltf) => {
+    const blaster = gltf.scene
+    // blaster.scale.set(0.5, 0.5, 0.5) // Scale the blaster
+    controllerGrip2.add(blaster) // Attach blaster to right controller
+  })
+
   const geometry = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
     new THREE.Vector3(0, 0, -1),
@@ -197,9 +210,64 @@ function cleanIntersected() {
   intersected.length = 0
 }
 
+function fireBullet() {
+  // Play firing sound
+  fireSound.play()
+
+  // Create a small sphere to represent the bullet
+  const bulletGeometry = new THREE.SphereGeometry(0.02, 8, 8)
+  const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial)
+
+  // Position the bullet at the blaster's tip
+  const blasterTip = new THREE.Vector3()
+  controller2.getWorldPosition(blasterTip) // Get the position of the controller
+  bullet.position.copy(blasterTip)
+
+  // Set bullet direction based on controller's orientation
+  const direction = new THREE.Vector3(0, 0, -1)
+  direction.applyQuaternion(controller2.quaternion) // Rotate direction by controller's orientation
+  bullet.userData.direction = direction
+
+  scene.add(bullet)
+  bullets.push(bullet)
+}
+
+function updateBullets() {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const bullet = bullets[i]
+    bullet.position.add(bullet.userData.direction.clone().multiplyScalar(bulletSpeed)) // Move bullet
+
+    // Check for collisions with letters
+    const intersections = raycaster.intersectObjects(selectableObjects, false)
+    if (intersections.length > 0) {
+      const intersectedObject = intersections[0].object
+
+      // Remove the intersected letter from the scene
+      scene.remove(intersectedObject)
+      selectableObjects.splice(selectableObjects.indexOf(intersectedObject), 1)
+
+      // Remove bullet from scene and array
+      scene.remove(bullet)
+      bullets.splice(i, 1)
+      continue
+    }
+
+    // Remove bullet if it goes too far
+    if (bullet.position.length() > 10) {
+      scene.remove(bullet)
+      bullets.splice(i, 1)
+    }
+  }
+}
+
+controller2.addEventListener('selectstart', fireBullet)
+
 function animate() {
   cleanIntersected()
   intersectObjects(controller1)
   intersectObjects(controller2)
+  // Move bullets and check for collisions
+  updateBullets()
   renderer.render(scene, camera)
 }
